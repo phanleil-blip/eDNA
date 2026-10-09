@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>eDNA Sampler</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 56rem; margin: 1rem auto; padding: 0 1rem; }
+  .status { padding: .6rem; background: #eef; margin-bottom: 1rem; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: .5rem; }
+  .grid form { display: flex; gap: .4rem; align-items: center; }
+  .grid label { width: 2.5rem; font-weight: 600; }
+  .grid input { width: 5rem; }
+  .units label { margin-right: .75rem; white-space: nowrap; }
+  form.inline { display: inline; }
+</style>
+</head>
+<body>
+
+{% macro pump_form(kind, unit, default, max) %}
+<form method="post" action="{{ url_for('pump', kind=kind, unit=unit) }}">
+  <label>{{ unit }}</label>
+  <input type="number" name="duration" step="0.1" min="0.1" max="{{ max }}" value="{{ default }}" required>
+  <button {{ 'disabled' if job }}>Run</button>
+</form>
+{% endmacro %}
+
+<h1>eDNA Sampler</h1>
+
+<div class="status">
+  {% if job %}Running: {{ job }}{% else %}Idle{% endif %}
+  {% if cfg.armed %}&middot; Armed for {{ cfg.sample_time }}{% endif %}
+  <form class="inline" method="post" action="{{ url_for('stop') }}"><button>Stop</button></form>
+</div>
+
+<form method="post" action="{{ url_for('save_settings') }}">
+  <fieldset>
+    <legend>Deployment settings</legend>
+    <p><label>Sample time (24 h)
+      <input type="time" name="sample_time" value="{{ cfg.sample_time }}" required></label></p>
+    <p><label>Sample duration per unit (s)
+      <input type="number" name="sample_duration" step="0.1" min="0.1" max="{{ sub_max }}" value="{{ cfg.sample_duration }}" required></label></p>
+    <p><label>Preservative duration (s, max {{ pres_max }})
+      <input type="number" name="pres_duration" step="0.1" min="0.1" max="{{ pres_max }}" value="{{ cfg.pres_duration }}" required></label></p>
+    <p><label>Interval between units (min)
+      <input type="number" name="interval_min" step="0.01" min="0" value="{{ cfg.interval_min }}" required></label></p>
+    <p class="units">Units in sequence:
+      {% for u in units %}
+      <label><input type="checkbox" name="units" value="{{ u }}" {{ 'checked' if u in cfg.units }}> {{ u }}</label>
+      {% endfor %}
+    </p>
+    <button>Save</button>
+  </fieldset>
+</form>
+
+<p>
+  <form class="inline" method="post" action="{{ url_for('prime') }}"><button {{ 'disabled' if job }}>Prime preservative pumps</button></form>
+  <form class="inline" method="post" action="{{ url_for('test') }}"><button {{ 'disabled' if job }}>Full test run</button></form>
+  <form class="inline" method="post" action="{{ url_for('arm') }}"><button>Prepare for next deployment</button></form>
+</p>
+
+<h2>Submersible pumps</h2>
+<div class="grid">
+  {% for u in units %}{{ pump_form('sub', u, cfg.sample_duration, sub_max) }}{% endfor %}
+</div>
+
+<h2>Preservative pumps</h2>
+<div class="grid">
+  {% for u in units %}{{ pump_form('pres', u, cfg.pres_duration, pres_max) }}{% endfor %}
+</div>
+
+<script>
+  const initial = {{ job|tojson }};
+  setInterval(async () => {
+    const { job } = await (await fetch("{{ url_for('status') }}")).json();
+    if (job !== initial) location.reload();
+  }, 1500);
+</script>
+</body>
+</html>
